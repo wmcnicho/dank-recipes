@@ -11,22 +11,40 @@ const LANES = [
 ];
 const ALL_PROTEINS = [...LANES, { key: "sweets", label: "Sweets", emoji: "🍰" }];
 
+const normUrl = (u) => (u || "").split("?")[0].replace(/\/+$/, "");
+const isUrl = (s) => /^https?:\/\//.test(s || "");
+
 const byId = new Map(recipes.map((r) => [r.id, r]));
-const byUrl = new Map(recipes.filter((r) => r.url).map((r) => [r.url, r.id]));
+const byUrl = new Map(recipes.filter((r) => r.url).map((r) => [normUrl(r.url), r.id]));
 const byTitle = new Map(recipes.map((r) => [r.title.toLowerCase(), r.id]));
+
+// Header rows of the sheet tab, past ("Recipe | Note") and present ("Title | Link")
+const HEADER_TITLES = new Set(["recipe", "title"]);
+const HEADER_URLS = new Set(["", "note", "link", "url"]);
+const isHeaderRow = (title, url) =>
+  HEADER_TITLES.has(title.toLowerCase()) && HEADER_URLS.has(url.toLowerCase());
 
 // Sheet rows -> known recipe ids + rows we don't recognize (added by hand
 // in the sheet); unknown rows are kept and written back so the app never
-// deletes them.
+// deletes them. Tolerates the hand-edited format where a bare URL is
+// pasted into the first (title) column.
 function matchWeek(week) {
   const ids = [];
   const unknown = [];
-  for (const w of week) {
-    const id = byUrl.get(w.url) ?? byTitle.get((w.title || "").toLowerCase());
+  for (const raw of week) {
+    let title = (raw.title || "").trim();
+    let url = (raw.url || "").trim();
+    if (!url && isUrl(title)) {
+      url = title;
+      title = "";
+    }
+    if (!title && !url) continue;
+    if (isHeaderRow(title, url)) continue;
+    const id = byUrl.get(normUrl(url)) ?? byTitle.get(title.toLowerCase());
     if (id !== undefined) {
       if (!ids.includes(id)) ids.push(id);
-    } else if (w.title || w.url) {
-      unknown.push(w);
+    } else {
+      unknown.push({ title, url });
     }
   }
   return { ids, unknown };
@@ -107,7 +125,9 @@ function WeekTray({ picks, unknown, onToggle, onClear, laneFilter, setLaneFilter
         )}
       </div>
       <div className="lanes">
-        {LANES.map((lane) => {
+        {[...LANES, ...(picks.some((id) => byId.get(id)?.protein === "sweets")
+          ? [{ key: "sweets", label: "Extras", emoji: "🍰" }]
+          : [])].map((lane) => {
           const lanePicks = picks.filter((id) => byId.get(id)?.protein === lane.key);
           const active = laneFilter === lane.key;
           return (
@@ -194,11 +214,15 @@ export default function App() {
   const serverLoaded = useRef(false);
   const lastSynced = useRef(null);
 
-  // On load, the sheet is the source of truth for the week.
+  // On load, the sheet is the source of truth for the week. The cancelled
+  // flag drops stale responses (StrictMode double-mount, remount races) so
+  // a late fetch can't overwrite picks made after a faster one applied.
   useEffect(() => {
     if (!syncEnabled()) return;
+    let cancelled = false;
     fetchWeek()
       .then((week) => {
+        if (cancelled) return;
         const { ids, unknown } = matchWeek(week);
         setPicks(ids);
         setUnknownWeek(unknown);
@@ -206,7 +230,12 @@ export default function App() {
         serverLoaded.current = true;
         setSyncStatus("synced");
       })
-      .catch(() => setSyncStatus("error"));
+      .catch(() => {
+        if (!cancelled) setSyncStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Cache locally always; push to the sheet (debounced) once server state
