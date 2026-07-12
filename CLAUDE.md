@@ -16,6 +16,11 @@ Node is installed at `~/.local/node` and is NOT on PATH — prefix commands with
 - `npm run lint` — ESLint
 - No tests exist.
 
+Deploy: `./deploy.sh` at the repo root builds and force-pushes `dist/` to the `gh-pages`
+branch of https://github.com/wmcnicho/dank-recipes, serving https://wmcnicho.github.io/dank-recipes/.
+GitHub Actions is not used — the `gh` OAuth token lacks the `workflow` scope
+(run `gh auth refresh -s workflow` if CI deploys are ever wanted). The `gh` CLI lives at `~/.local/gh/bin`.
+
 Refresh recipe data (from `dank_recipes_site/`, after updating the root CSV):
 
 ```
