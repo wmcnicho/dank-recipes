@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import recipes from "./recipes.json";
+import { syncEnabled, fetchWeek, saveWeek } from "./sync";
 import "./App.css";
 
 const LANES = [
@@ -10,7 +11,38 @@ const LANES = [
 ];
 const ALL_PROTEINS = [...LANES, { key: "sweets", label: "Sweets", emoji: "🍰" }];
 
-const proteinOf = (id) => recipes.find((r) => r.id === id)?.protein;
+const byId = new Map(recipes.map((r) => [r.id, r]));
+const byUrl = new Map(recipes.filter((r) => r.url).map((r) => [r.url, r.id]));
+const byTitle = new Map(recipes.map((r) => [r.title.toLowerCase(), r.id]));
+
+// Sheet rows -> known recipe ids + rows we don't recognize (added by hand
+// in the sheet); unknown rows are kept and written back so the app never
+// deletes them.
+function matchWeek(week) {
+  const ids = [];
+  const unknown = [];
+  for (const w of week) {
+    const id = byUrl.get(w.url) ?? byTitle.get((w.title || "").toLowerCase());
+    if (id !== undefined) {
+      if (!ids.includes(id)) ids.push(id);
+    } else if (w.title || w.url) {
+      unknown.push(w);
+    }
+  }
+  return { ids, unknown };
+}
+
+const weekPayload = (picks, unknown) => [
+  ...picks.map((id) => ({ title: byId.get(id).title, url: byId.get(id).url || "" })),
+  ...unknown,
+];
+
+const SYNC_LABELS = {
+  loading: "syncing…",
+  saving: "saving…",
+  synced: "✓ synced to sheet",
+  error: "⚠ offline — this browser only",
+};
 
 function Stars({ rating }) {
   if (!rating) return null;
@@ -60,20 +92,23 @@ function RecipeCard({ recipe, selected, onToggle }) {
   );
 }
 
-function WeekTray({ picks, onToggle, onClear, laneFilter, setLaneFilter }) {
+function WeekTray({ picks, unknown, onToggle, onClear, laneFilter, setLaneFilter, syncStatus }) {
   return (
     <div className="week-tray">
       <div className="tray-header">
         <h2>This Week</h2>
-        {picks.length > 0 && (
+        {picks.length + unknown.length > 0 && (
           <button className="clear-btn" onClick={onClear}>
-            clear ({picks.length})
+            clear ({picks.length + unknown.length})
           </button>
+        )}
+        {SYNC_LABELS[syncStatus] && (
+          <span className={`sync-status ${syncStatus}`}>{SYNC_LABELS[syncStatus]}</span>
         )}
       </div>
       <div className="lanes">
         {LANES.map((lane) => {
-          const lanePicks = picks.filter((id) => proteinOf(id) === lane.key);
+          const lanePicks = picks.filter((id) => byId.get(id)?.protein === lane.key);
           const active = laneFilter === lane.key;
           return (
             <div
@@ -88,11 +123,23 @@ function WeekTray({ picks, onToggle, onClear, laneFilter, setLaneFilter }) {
                 <div className="lane-empty">pick one</div>
               ) : (
                 lanePicks.map((id) => {
-                  const r = recipes.find((x) => x.id === id);
+                  const r = byId.get(id);
                   return (
                     <div key={id} className="lane-pick" title={r.title}>
                       {r.image && <img src={r.image} alt="" />}
-                      <span className="lane-pick-title">{r.title}</span>
+                      {r.url ? (
+                        <a
+                          className="lane-pick-title"
+                          href={r.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {r.title}
+                        </a>
+                      ) : (
+                        <span className="lane-pick-title">{r.title}</span>
+                      )}
                       <button
                         className="remove-btn"
                         onClick={(e) => {
@@ -110,6 +157,23 @@ function WeekTray({ picks, onToggle, onClear, laneFilter, setLaneFilter }) {
           );
         })}
       </div>
+      {unknown.length > 0 && (
+        <div className="unknown-week">
+          also on the sheet:{" "}
+          {unknown.map((w, i) => (
+            <span key={i}>
+              {i > 0 && ", "}
+              {w.url ? (
+                <a href={w.url} target="_blank" rel="noopener noreferrer">
+                  {w.title || w.url}
+                </a>
+              ) : (
+                w.title
+              )}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -117,20 +181,61 @@ function WeekTray({ picks, onToggle, onClear, laneFilter, setLaneFilter }) {
 export default function App() {
   const [picks, setPicks] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("weekPicks")) ?? [];
+      return (JSON.parse(localStorage.getItem("weekPicks")) ?? []).filter((id) => byId.has(id));
     } catch {
       return [];
     }
   });
+  const [unknownWeek, setUnknownWeek] = useState([]);
+  const [syncStatus, setSyncStatus] = useState(syncEnabled() ? "loading" : "local");
   const [laneFilter, setLaneFilter] = useState(null);
   const [search, setSearch] = useState("");
 
+  const serverLoaded = useRef(false);
+  const lastSynced = useRef(null);
+
+  // On load, the sheet is the source of truth for the week.
+  useEffect(() => {
+    if (!syncEnabled()) return;
+    fetchWeek()
+      .then((week) => {
+        const { ids, unknown } = matchWeek(week);
+        setPicks(ids);
+        setUnknownWeek(unknown);
+        lastSynced.current = JSON.stringify(weekPayload(ids, unknown));
+        serverLoaded.current = true;
+        setSyncStatus("synced");
+      })
+      .catch(() => setSyncStatus("error"));
+  }, []);
+
+  // Cache locally always; push to the sheet (debounced) once server state
+  // has loaded, skipping no-op echoes of what we just fetched/saved.
   useEffect(() => {
     localStorage.setItem("weekPicks", JSON.stringify(picks));
-  }, [picks]);
+    if (!serverLoaded.current) return;
+    const payload = weekPayload(picks, unknownWeek);
+    const serialized = JSON.stringify(payload);
+    if (serialized === lastSynced.current) return;
+    setSyncStatus("saving");
+    const t = setTimeout(() => {
+      saveWeek(payload)
+        .then(() => {
+          lastSynced.current = serialized;
+          setSyncStatus("synced");
+        })
+        .catch(() => setSyncStatus("error"));
+    }, 800);
+    return () => clearTimeout(t);
+  }, [picks, unknownWeek]);
 
   const togglePick = (id) =>
     setPicks((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const clearWeek = () => {
+    setPicks([]);
+    setUnknownWeek([]);
+  };
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -155,10 +260,12 @@ export default function App() {
 
       <WeekTray
         picks={picks}
+        unknown={unknownWeek}
         onToggle={togglePick}
-        onClear={() => setPicks([])}
+        onClear={clearWeek}
         laneFilter={laneFilter}
         setLaneFilter={setLaneFilter}
+        syncStatus={syncStatus}
       />
 
       <div className="filter-row">

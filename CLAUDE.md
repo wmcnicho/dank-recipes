@@ -38,7 +38,9 @@ Two halves: a Python data pipeline and a Vite + React 18 app. No backend — rec
 - `fetch_images.py` — plain-HTTP og:image/og:title fetch for recipes missing images; appends to the scrape cache `recipes_with_metadata.json`.
 - `convert.py` / `extract_meta.py` / `retry_extract.py` — the original Playwright pipeline, superseded by the above; kept for reference.
 
-**App** (`src/App.jsx`, styles in `App.css`): built around the weekly picking flow — a sticky "This Week" tray with four protein lanes (the household's weekly structure: 1 fish, 1 red meat, 1 chicken, 1 veg), protein filter chips, search, and a card grid. Clicking a card toggles it into its lane; clicking a lane filters the grid to that protein. Picks persist in `localStorage` under `weekPicks` as recipe ids.
+**App** (`src/App.jsx`, styles in `App.css`): built around the weekly picking flow — a sticky "This Week" tray with four protein lanes (the household's weekly structure: 1 fish, 1 red meat, 1 chicken, 1 veg), protein filter chips, search, and a card grid. Clicking a card toggles it into its lane; clicking a lane filters the grid to that protein.
+
+**Week sync** (`src/sync.js`, backend in `apps_script/Code.gs`): the sheet's "Current Recipes" tab is the shared source of truth for the week. A Google Apps Script web app (deployed manually from the sheet — see comments in `Code.gs`) serves GET (read week) and POST setWeek (rewrite tab, shared-secret gated). The app loads the week on mount, saves changes debounced 800ms, and skips echo saves. Sheet rows that don't match any recipe (hand-typed) are preserved on save and shown as "also on the sheet". POSTs use `Content-Type: text/plain` because Apps Script can't answer CORS preflight. The endpoint URL lives in `src/config.js` (`SYNC_URL`), overridable per-browser via localStorage key `syncUrl`; empty URL = localStorage-only mode (`weekPicks` key, recipe ids).
 
 ## Data notes
 
