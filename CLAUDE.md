@@ -1,0 +1,43 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+A personal meal-prep app replacing a long-running Google Sheets workflow: browse a recipe collection visually, pick 3–5 recipes for the week, shop, cook. The source of truth is the Google Sheet ("Dank Recipes"); `Dank Recipes - All Recipes.csv` at the repo root is a CSV snapshot of it.
+
+## Commands
+
+Node is installed at `~/.local/node` and is NOT on PATH — prefix commands with
+`export PATH="$HOME/.local/node/bin:$PATH"`. All app commands run from `dank_recipes_site/`:
+
+- `npm run dev` — Vite dev server (port 5173)
+- `npm run build` — production build
+- `npm run lint` — ESLint
+- No tests exist.
+
+Refresh recipe data (from `dank_recipes_site/`, after updating the root CSV):
+
+```
+python3 build_data.py     # CSV + scrape cache -> src/recipes.json
+python3 fetch_images.py   # fetch og:image/title for entries missing images
+python3 build_data.py     # fold new scrapes in
+```
+
+## Architecture
+
+Two halves: a Python data pipeline and a Vite + React 18 app. No backend — recipe data is baked into the bundle.
+
+**Data pipeline** (`dank_recipes_site/`):
+- `build_data.py` — parses the root CSV, dedupes by URL, derives titles for URL-only rows (scraped page title, else URL slug), classifies each recipe into a protein lane (`fish` / `chicken` / `red meat` / `veg` / `sweets`) via keyword rules + hand overrides, merges images from the scrape cache, writes `src/recipes.json`.
+- `fetch_images.py` — plain-HTTP og:image/og:title fetch for recipes missing images; appends to the scrape cache `recipes_with_metadata.json`.
+- `convert.py` / `extract_meta.py` / `retry_extract.py` — the original Playwright pipeline, superseded by the above; kept for reference.
+
+**App** (`src/App.jsx`, styles in `App.css`): built around the weekly picking flow — a sticky "This Week" tray with four protein lanes (the household's weekly structure: 1 fish, 1 red meat, 1 chicken, 1 veg), protein filter chips, search, and a card grid. Clicking a card toggles it into its lane; clicking a lane filters the grid to that protein. Picks persist in `localStorage` under `weekPicks` as recipe ids.
+
+## Data notes
+
+- CSV columns: `Title, Link, Maddy Rating, Hunter Rating, Date Cooked, Notes` (ratings 1–5, dates M/D/YYYY). Newer rows (~row 118+) are URL-only with no title. Two rows are notes-to-self, filtered out by `build_data.py`.
+- A few `Link` cells are pasted link text, not URLs (e.g. "… - Cookie and Kate"); these keep `url: null` / `linkText` in the JSON and get a placeholder card.
+- Recipe `id`s are CSV row order, so they shift if rows are inserted mid-sheet — `weekPicks` in localStorage may point at the wrong recipes after a data refresh.
+- Ratings are sparse (mostly Maddy's, from 2020–2022); the couple stopped rating but may want the feature revisited in-app later.
