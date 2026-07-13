@@ -31,8 +31,9 @@ const LOG_TAB = "Cook Log";
 const SECRET = "dank-recipes-2026"; // must match SYNC_SECRET in src/config.js
 
 // All Recipes tab columns: A=Title, B=Link, C=Maddy Rating, D=Hunter Rating,
-// E=Date Cooked, F=Notes
+// E=Date Cooked, F=Notes, G=Added By ("H" or "M", written by the app)
 const COL_DATE_COOKED = 5;
+const COL_ADDED_BY = 7;
 
 function ss_() {
   return SpreadsheetApp.getActiveSpreadsheet();
@@ -86,6 +87,7 @@ function readRecipes_() {
       dateCooked: values[i][COL_DATE_COOKED - 1]
         ? String(values[i][COL_DATE_COOKED - 1])
         : "",
+      addedBy: String(values[i][COL_ADDED_BY - 1] || "").trim(),
     });
   }
   return recipes;
@@ -139,7 +141,10 @@ function addRecipe_(body) {
       return json_({ ok: true, duplicate: true });
     }
   }
-  sheet.appendRow([title, url]);
+  const addedBy = String(body.addedBy || "").trim().toUpperCase();
+  const row = [title, url, "", "", "", ""];
+  row[COL_ADDED_BY - 1] = addedBy === "H" || addedBy === "M" ? addedBy : "";
+  sheet.appendRow(row);
   return json_({ ok: true });
 }
 

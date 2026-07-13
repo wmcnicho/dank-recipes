@@ -30,7 +30,8 @@ export async function fetchState() {
 
 export const saveWeek = (week) => post({ action: "setWeek", week });
 
-export const addRecipe = ({ title, url }) => post({ action: "addRecipe", title, url });
+export const addRecipe = ({ title, url, addedBy }) =>
+  post({ action: "addRecipe", title, url, addedBy: addedBy || "" });
 
 export const markCooked = ({ title, url, date }) =>
   post({ action: "markCooked", title, url, date });

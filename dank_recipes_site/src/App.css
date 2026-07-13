@@ -94,6 +94,49 @@ header input[type="search"]:focus {
   font-size: 0.9rem;
 }
 
+.added-by {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.added-by-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.added-by-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.added-by-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.added-by-tag {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .add-form-actions {
   display: flex;
   align-items: center;

@@ -84,6 +84,7 @@ function mergeRecipes(baked, sheetRows) {
       hunterRating: null,
       dateCooked: raw.dateCooked || null,
       notes: null,
+      addedBy: raw.addedBy || null,
       protein: classifyProtein(title),
       image: null,
       dynamic: true,
@@ -166,6 +167,11 @@ function RecipeCard({ recipe, selected, onToggle }) {
         <h3>{recipe.title}</h3>
         <div className="card-meta">
           <Stars rating={recipe.maddyRating} />
+          {recipe.addedBy && (
+            <span className="added-by-tag" title={`Added by ${recipe.addedBy}`}>
+              {recipe.addedBy}
+            </span>
+          )}
           {recipe.source && <span className="source">{recipe.source}</span>}
           {recipe.url && (
             <a
@@ -317,8 +323,20 @@ function WeekTray({
 function AddRecipeForm({ onAdd, onClose, byUrl }) {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
+  // Optional H/M attribution; remembered per browser so each of your
+  // machines defaults to its usual chef.
+  const [addedBy, setAddedBy] = useState(() => {
+    const v = localStorage.getItem("addedBy");
+    return v === "H" || v === "M" ? v : "";
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  const pickAddedBy = (v) => {
+    const next = addedBy === v ? "" : v;
+    setAddedBy(next);
+    localStorage.setItem("addedBy", next);
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -334,7 +352,7 @@ function AddRecipeForm({ onAdd, onClose, byUrl }) {
     setBusy(true);
     setError(null);
     try {
-      await onAdd({ title: title.trim() || slugTitle(u), url: u });
+      await onAdd({ title: title.trim() || slugTitle(u), url: u, addedBy });
       onClose();
     } catch {
       setError("Couldn't save to the sheet — try again.");
@@ -358,6 +376,19 @@ function AddRecipeForm({ onAdd, onClose, byUrl }) {
         value={title}
         onChange={(e) => setTitle(e.target.value)}
       />
+      <div className="added-by">
+        <span className="added-by-label">Added by</span>
+        {["H", "M"].map((v) => (
+          <button
+            key={v}
+            type="button"
+            className={`added-by-btn ${addedBy === v ? "active" : ""}`}
+            onClick={() => pickAddedBy(v)}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
       <div className="add-form-actions">
         <button type="submit" disabled={busy}>
           {busy ? "Adding…" : "Add to collection"}
@@ -459,11 +490,11 @@ export default function App() {
     );
   };
 
-  const handleAdd = async ({ title, url }) => {
+  const handleAdd = async ({ title, url, addedBy }) => {
     if (!legacyBackend && syncEnabled()) {
-      await addRecipe({ title, url });
+      await addRecipe({ title, url, addedBy });
     }
-    setSheetRecipes((rows) => [...rows, { title, url }]);
+    setSheetRecipes((rows) => [...rows, { title, url, addedBy }]);
     setLaneFilter(null);
     setSearch(title); // reveal the new card
   };
