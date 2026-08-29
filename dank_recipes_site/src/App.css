@@ -75,6 +75,22 @@ header input[type="search"]:focus {
   color: var(--accent);
 }
 
+.csa-link {
+  font-size: 0.9rem;
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  border-radius: 20px;
+  padding: 8px 16px;
+  white-space: nowrap;
+}
+
+.csa-link:hover {
+  border-color: var(--veg);
+  color: var(--veg);
+}
+
 .add-form {
   display: flex;
   flex-wrap: wrap;

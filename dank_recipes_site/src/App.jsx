@@ -525,6 +525,9 @@ export default function App() {
             + Add recipe
           </button>
         )}
+        <a className="csa-link" href="#/csa" title="CSA box puzzle">
+          🧺 CSA
+        </a>
       </header>
 
       {showAdd && (
