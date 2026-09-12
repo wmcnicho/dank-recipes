@@ -20,3 +20,11 @@ createRoot(document.getElementById('root')).render(
     <Router />
   </StrictMode>,
 )
+
+// Offline shell + faster repeat loads for the installed app. BASE_URL keeps
+// the worker inside the GitHub Pages subpath so its scope covers the app.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {})
+  })
+}
